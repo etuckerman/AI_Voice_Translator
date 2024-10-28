@@ -62,9 +62,12 @@ while True:
     #incase of problem with GSR servers
     except sr.RequestError as e:
         print(f"Could not request results from Google Speech Recognition service; {e}")
+    
+    except Exception as e:
+        print(f"An error occurred during translation: {e}")
         
         
                     
             
         
-        
+    
