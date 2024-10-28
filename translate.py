@@ -1,5 +1,3 @@
-#run myenv\Scripts\activate to run in env
-
 import tkinter as tk
 from tkinter import messagebox
 import speech_recognition as sr
@@ -16,7 +14,7 @@ tts = pyttsx3.init()
 # Function to handle speech recognition and translation
 def translate_speech():
     with sr.Microphone() as source:
-        print("Speak now")
+        status_label.config(text="Listening...")
         r.adjust_for_ambient_noise(source)
         audio = r.listen(source)
 
@@ -39,16 +37,22 @@ def translate_speech():
 
         # Update the GUI with the output
         output_label.config(text=output_text)
+        status_label.config(text="Translation complete.")
 
     except sr.UnknownValueError:
         messagebox.showerror("Error", "Could not understand audio")
+        status_label.config(text="Error: Could not understand audio")
     except sr.RequestError as e:
         messagebox.showerror("Error", f"Could not request results; {e}")
+        status_label.config(text="Error: Request failed")
     except Exception as e:
         messagebox.showerror("Error", f"An error occurred: {e}")
+        status_label.config(text="Error occurred")
 
 # Function to start the translation in a separate thread
 def start_translation():
+    output_label.config(text="")
+    status_label.config(text="Starting translation...")
     threading.Thread(target=translate_speech).start()
 
 # Function to exit the application
@@ -58,16 +62,23 @@ def exit_app():
 # Create the main window
 root = tk.Tk()
 root.title("AI Voice Translator")
+root.geometry("400x300")  # Set a larger window size
 
 # Create and place the buttons and output label
+instructions_label = tk.Label(root, text="Press 'Start Translation' to begin speaking.", wraplength=300)
+instructions_label.pack(pady=10)
+
 start_button = tk.Button(root, text="Start Translation", command=start_translation)
-start_button.pack(pady=20)
+start_button.pack(pady=10)
 
 exit_button = tk.Button(root, text="Exit", command=exit_app)
-exit_button.pack(pady=20)
+exit_button.pack(pady=10)
 
 output_label = tk.Label(root, text="", wraplength=300)
-output_label.pack(pady=20)
+output_label.pack(pady=10)
+
+status_label = tk.Label(root, text="", wraplength=300)
+status_label.pack(pady=10)
 
 # Run the application
 root.mainloop()
