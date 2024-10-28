@@ -19,7 +19,16 @@ translator = Translator(service_urls=['translate.google.com'])
 model = VitsModel.from_pretrained("facebook/mms-tts-spa")
 tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-spa")
 
-# Function to handle speech recognition and translation
+def play_translation(output):
+    # Convert the output to a suitable format
+    output = output.squeeze().numpy()  # Remove unnecessary dimensions
+    output = output * 32767  # Scale to int16 range
+    output = output.astype(np.int16)  # Convert to int16
+
+    # Play the audio
+    sd.play(output, samplerate=model.config.sampling_rate)
+    sd.wait()  # Wait until the sound has finished playing
+
 def translate_speech():
     while True:  # Loop to continuously listen for new input
         with sr.Microphone() as source:
@@ -52,17 +61,8 @@ def translate_speech():
             with torch.no_grad():
                 output = model(**inputs).waveform
 
-            # Convert the output to a suitable format
-            output = output.squeeze().numpy()  # Remove unnecessary dimensions
-            output = output * 32767  # Scale to int16 range
-            output = output.astype(np.int16)  # Convert to int16
-
-            # Save the output as a WAV file
-            scipy.io.wavfile.write("translated_speech.wav", rate=model.config.sampling_rate, data=output)
-
-            # Play the audio
-            sd.play(output, samplerate=model.config.sampling_rate)
-            sd.wait()  # Wait until the sound has finished playing
+            # Start TTS playback in a separate thread
+            threading.Thread(target=play_translation, args=(output,), daemon=True).start()
 
             status_label.config(text="Translation complete.")
 
