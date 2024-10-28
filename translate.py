@@ -25,18 +25,23 @@ def translate_speech():
         if input_language == "es":
             translation = translator.translate(text, dest='en')
             output_text = f"Spanish to English: {translation.text}"
+            detected_language = "Detected Language: Spanish"
         elif input_language == "en":
             translation = translator.translate(text, dest='es')
             output_text = f"English to Spanish: {translation.text}"
+            detected_language = "Detected Language: English"
         else:
             output_text = "Unsupported language"
+            detected_language = "Detected Language: Unknown"
+
+        # Update the GUI with the output
+        output_label.config(text=output_text)
+        language_label.config(text=detected_language)
 
         # Speak the translated text
         tts.say(translation.text)
         tts.runAndWait()
 
-        # Update the GUI with the output
-        output_label.config(text=output_text)
         status_label.config(text="Translation complete.")
 
     except sr.UnknownValueError:
@@ -52,6 +57,7 @@ def translate_speech():
 # Function to start the translation in a separate thread
 def start_translation():
     output_label.config(text="")
+    language_label.config(text="")
     status_label.config(text="Starting translation...")
     threading.Thread(target=translate_speech).start()
 
@@ -76,6 +82,9 @@ exit_button.pack(pady=10)
 
 output_label = tk.Label(root, text="", wraplength=300)
 output_label.pack(pady=10)
+
+language_label = tk.Label(root, text="", wraplength=300)  # Label to show detected language
+language_label.pack(pady=10)
 
 status_label = tk.Label(root, text="", wraplength=300)
 status_label.pack(pady=10)
