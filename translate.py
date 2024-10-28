@@ -34,6 +34,8 @@ def update_transcript(text):
     transcript_text.insert(tk.END, f"You: {text}\n")  # Append the user's input
     transcript_text.see(tk.END)  # Scroll to the end of the transcript
 
+import time  # Import time for sleep functionality
+
 def translate_speech():
     while True:  # Loop to continuously listen for new input
         with sr.Microphone() as source:
@@ -52,22 +54,47 @@ def translate_speech():
                 detected_language = ""
 
                 if input_language == "es":
-                    translation = translator.translate(text, dest='en')
-                    translation_text = translation.text
-                    output_text = f"Spanish to English: {translation_text}"
+                    dest_language = 'en'
                     detected_language = "Detected Language: Spanish"
                 elif input_language == "en":
-                    translation = translator.translate(text, dest='es')
-                    translation_text = translation.text
-                    output_text = f"English to Spanish: {translation_text}"
+                    dest_language = 'es'
                     detected_language = "Detected Language: English"
                 else:
                     output_text = "Unsupported language"
                     detected_language = "Detected Language: Unknown"
+                    status_label.config(text=output_text)
+                    continue  # Skip to the next iteration
 
-                # Check if translation is valid
-                if translation_text:
-                    # Update the GUI with the output
+                # Attempt to translate with retries
+                translation_attempts = 0
+                max_attempts = 5  # Maximum attempts
+                translation_success = False
+
+                while translation_attempts < max_attempts and not translation_success:
+                    try:
+                        status_label.config(text=f"Reconnecting to Google Translate...")
+                        translation = translator.translate(text, dest=dest_language)
+
+                        # Check if translation is valid
+                        if translation and hasattr(translation, 'text'):
+                            translation_text = translation.text
+                            translation_success = True  # Mark as successful if no exception occurs
+                        else:
+                            raise ValueError("Translation returned None or invalid response.")
+
+                    except Exception as e:
+                        translation_attempts += 1
+                        print(f"Attempt {translation_attempts} failed: {e}")  # Print the error for debugging
+                        time.sleep(1)  # Wait for a second before retrying
+                        if translation_attempts < max_attempts:
+                            continue  # Retry translation
+                        else:
+                            status_label.config(text="Translation failed after multiple attempts.")
+                            break  # Exit the retry loop
+
+                # If translation was successful, update the GUI
+                if translation_success and translation_text:
+                    output_text = f"{detected_language.split(': ')[0]} to {dest_language}: {translation_text}"
                     output_label.config(text=output_text)
                     language_label.config(text=detected_language)
 
