@@ -29,6 +29,11 @@ def play_translation(output):
     sd.play(output, samplerate=model.config.sampling_rate)
     sd.wait()  # Wait until the sound has finished playing
 
+def update_transcript(text):
+    # Update the transcript with the user's spoken text
+    transcript_text.insert(tk.END, f"You: {text}\n")  # Append the user's input
+    transcript_text.see(tk.END)  # Scroll to the end of the transcript
+
 def translate_speech():
     while True:  # Loop to continuously listen for new input
         with sr.Microphone() as source:
@@ -36,46 +41,65 @@ def translate_speech():
             r.adjust_for_ambient_noise(source)
             audio = r.listen(source)
 
-        try:
-            text = r.recognize_google(audio)
-            input_language = detect(text)
+            # Convert audio to text
+            try:
+                text = r.recognize_google(audio)
+                update_transcript(text)  # Update the transcript with the user's input
+                input_language = detect(text)
 
-            if input_language == "es":
-                translation = translator.translate(text, dest='en')
-                output_text = f"Spanish to English: {translation.text}"
-                detected_language = "Detected Language: Spanish"
-            elif input_language == "en":
-                translation = translator.translate(text, dest='es')
-                output_text = f"English to Spanish: {translation.text}"
-                detected_language = "Detected Language: English"
-            else:
-                output_text = "Unsupported language"
-                detected_language = "Detected Language: Unknown"
+                # Initialize translation variables
+                translation_text = ""
+                detected_language = ""
 
-            # Update the GUI with the output
-            output_label.config(text=output_text)
-            language_label.config(text=detected_language)
+                if input_language == "es":
+                    translation = translator.translate(text, dest='en')
+                    translation_text = translation.text
+                    output_text = f"Spanish to English: {translation_text}"
+                    detected_language = "Detected Language: Spanish"
+                elif input_language == "en":
+                    translation = translator.translate(text, dest='es')
+                    translation_text = translation.text
+                    output_text = f"English to Spanish: {translation_text}"
+                    detected_language = "Detected Language: English"
+                else:
+                    output_text = "Unsupported language"
+                    detected_language = "Detected Language: Unknown"
 
-            # Speak the translated text using the new TTS model
-            inputs = tokenizer(translation.text, return_tensors="pt")
-            with torch.no_grad():
-                output = model(**inputs).waveform
+                # Check if translation is valid
+                if translation_text:
+                    # Update the GUI with the output
+                    output_label.config(text=output_text)
+                    language_label.config(text=detected_language)
 
-            # Start TTS playback in a separate thread
-            threading.Thread(target=play_translation, args=(output,), daemon=True).start()
+                    # Update the transcript with the translation
+                    transcript_text.insert(tk.END, f"Translation: {output_text}\n")  # Append the translation
+                    transcript_text.see(tk.END)  # Scroll to the end of the transcript
 
-            status_label.config(text="Translation complete.")
+                    # Speak the translated text using the new TTS model
+                    inputs = tokenizer(translation_text, return_tensors="pt")
+                    with torch.no_grad():
+                        output = model(**inputs).waveform
 
-        except sr.UnknownValueError:
-            messagebox.showerror("Error", "Could not understand audio")
-            status_label.config(text="Error: Could not understand audio")
-        except sr.RequestError as e:
-            messagebox.showerror("Error", f"Could not request results; {e}")
-            status_label.config(text="Error: Request failed")
-        except Exception as e:
-            messagebox.showerror("Error", f"An error occurred: {e}")
-            status_label.config(text="Error occurred")
+                    # Start TTS playback in a separate thread
+                    threading.Thread(target=play_translation, args=(output,), daemon=True).start()
 
+                    status_label.config(text="Translation complete.")
+                else:
+                    print("Translation is empty or failed.")
+                    status_label.config(text="Translation failed.")
+
+            except sr.UnknownValueError:
+                messagebox.showerror("Error", "Could not understand audio")
+                status_label.config(text="Error: Could not understand audio")
+            except sr.RequestError as e:
+                messagebox.showerror("Error", f"Could not request results; {e}")
+                status_label.config(text="Error: Request failed")
+            except Exception as e:
+                print(f"An error occurred: {e}")  # Print the error for debugging
+                messagebox.showerror("Error", f"An error occurred: {e}")
+                status_label.config(text="Error occurred")
+                
+                
 # Function to start the translation in a separate thread
 def start_translation():
     output_label.config(text="")
@@ -90,7 +114,7 @@ def exit_app():
 # Create the main window
 root = tk.Tk()
 root.title("AI Voice Translator")
-root.geometry("400x300")  # Set a larger window size
+root.geometry("400x400")  # Adjusted window size for transcript
 
 # Create and place the buttons and output label
 instructions_label = tk.Label(root, text="Press 'Start Translation' to begin speaking.", wraplength=300)
@@ -110,6 +134,10 @@ language_label.pack(pady=10)
 
 status_label = tk.Label(root, text="", wraplength=300)
 status_label.pack(pady=10)
+
+# Add a Text widget for the transcript
+transcript_text = tk.Text(root, wrap=tk.WORD, height=10, width=50)
+transcript_text.pack(pady=10)
 
 # Run the application
 root.mainloop()
