@@ -3,38 +3,34 @@ from tkinter import messagebox
 import speech_recognition as sr
 from transformers import VitsModel, AutoTokenizer
 import torch
-import pyttsx3
-from langdetect import detect
-from googletrans import Translator
+import requests
 import threading
-import scipy.io.wavfile
 import numpy as np
 import sounddevice as sd
+import time
 
-# Initialize the recognizer, translator, and TTS engine
+# Initialize the recognizer
 r = sr.Recognizer()
-translator = Translator(service_urls=['translate.google.com'])
 
-# Initialize the TTS model and tokenizer
-model = VitsModel.from_pretrained("facebook/mms-tts-spa")
-tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-spa")
+# Initialize TTS models and tokenizers for different languages
+tts_models = {
+    "English": (VitsModel.from_pretrained("facebook/mms-tts-eng"), AutoTokenizer.from_pretrained("facebook/mms-tts-eng")),
+    "Tagalog": (VitsModel.from_pretrained("facebook/mms-tts-tgl"), AutoTokenizer.from_pretrained("facebook/mms-tts-tgl")),
+    "Bengali": (VitsModel.from_pretrained("facebook/mms-tts-ben"), AutoTokenizer.from_pretrained("facebook/mms-tts-ben")),
+    "Spanish": (VitsModel.from_pretrained("facebook/mms-tts-spa"), AutoTokenizer.from_pretrained("facebook/mms-tts-spa")),
+}
 
-def play_translation(output):
-    # Convert the output to a suitable format
-    output = output.squeeze().numpy()  # Remove unnecessary dimensions
-    output = output * 32767  # Scale to int16 range
-    output = output.astype(np.int16)  # Convert to int16
-
-    # Play the audio
-    sd.play(output, samplerate=model.config.sampling_rate)
-    sd.wait()  # Wait until the sound has finished playing
+# Function to play the translated audio
+def play_translation(output, language):
+    output = output.squeeze().numpy()
+    output = output * 32767
+    output = output.astype(np.int16)
+    sd.play(output, samplerate=tts_models[language][0].config.sampling_rate)
+    sd.wait()
 
 def update_transcript(text):
-    # Update the transcript with the user's spoken text
-    transcript_text.insert(tk.END, f"You: {text}\n")  # Append the user's input
-    transcript_text.see(tk.END)  # Scroll to the end of the transcript
-
-import requests
+    transcript_text.insert(tk.END, f"You: {text}\n")
+    transcript_text.see(tk.END)
 
 # Function to translate text using DeepL API
 def deepl_translate(text, dest_language):
@@ -43,48 +39,56 @@ def deepl_translate(text, dest_language):
     params = {
         'auth_key': api_key,
         'text': text,
-        'target_lang': dest_language.upper()  # DeepL expects language codes in uppercase
+        'target_lang': dest_language.upper()
     }
     
     response = requests.post(url, data=params)
     if response.status_code == 200:
         return response.json()['translations'][0]['text']
     else:
-        print(f"Translation failed: {response.status_code} {response.text}")
+        print(f"Translation failed: {response.status_code} {response.text}")  # Print the response text for debugging
         return None
 
+# Create the main window
+root = tk.Tk()
+root.title("AI Voice Translator")
+root.geometry("400x400")
+
+# Create a dropdown menu for language selection
+language_var = tk.StringVar()
+language_var.set("English")  # Default value
+
+# List of languages for the dropdown with correct language codes
+language_options = {
+    "English": "EN",
+    "Tagalog": "TL",  # Check if DeepL supports this language
+    "Bengali": "BN",
+    "Spanish": "ES"
+}
+
+# Create the dropdown menu
+language_menu = tk.OptionMenu(root, language_var, *language_options.keys())
+language_menu.pack(pady=10)
+
+# Function to translate speech
 def translate_speech():
-    while True:  # Loop to continuously listen for new input
+    while True:
         with sr.Microphone() as source:
             status_label.config(text="Listening...")
             r.adjust_for_ambient_noise(source)
             audio = r.listen(source)
 
-            # Convert audio to text
             try:
                 text = r.recognize_google(audio)
-                update_transcript(text)  # Update the transcript with the user's input
-                input_language = detect(text)
+                update_transcript(text)
 
-                # Initialize translation variables
-                translation_text = ""
-                detected_language = ""
-
-                if input_language == "es":
-                    dest_language = 'EN'
-                    detected_language = "Detected Language: Spanish"
-                elif input_language == "en":
-                    dest_language = 'ES'
-                    detected_language = "Detected Language: English"
-                else:
-                    output_text = "Unsupported language"
-                    detected_language = "Detected Language: Unknown"
-                    status_label.config(text=output_text)
-                    continue  # Skip to the next iteration
+                # Get the selected target language code from the dropdown
+                selected_language = language_var.get()
+                dest_language = language_options[selected_language]  # Get the corresponding code
 
                 # Attempt to translate with retries
                 translation_attempts = 0
-                max_attempts = 5  # Maximum attempts
+                max_attempts = 5
                 translation_success = False
 
                 while translation_attempts < max_attempts and not translation_success:
@@ -93,38 +97,35 @@ def translate_speech():
                         translation_text = deepl_translate(text, dest_language)
 
                         if translation_text:
-                            translation_success = True  # Mark as successful if no exception occurs
+                            translation_success = True
                         else:
                             raise ValueError("Translation returned None or invalid response.")
 
                     except Exception as e:
                         translation_attempts += 1
-                        print(f"Attempt {translation_attempts} failed: {e}")  # Print the error for debugging
-                        time.sleep(1)  # Wait for a second before retrying
+                        print(f"Attempt {translation_attempts} failed: {e}")
+                        time.sleep(1)  # Wait for 1 second before retrying
                         if translation_attempts < max_attempts:
-                            continue  # Retry translation
+                            continue
                         else:
                             status_label.config(text="Translation failed after multiple attempts.")
-                            break  # Exit the retry loop
+                            break
 
-                # If translation was successful, update the GUI
                 if translation_success and translation_text:
-                    output_text = f"{detected_language.split(': ')[0]} to {dest_language}: {translation_text}"
+                    output_text = f"Translation to {selected_language}: {translation_text}"
                     output_label.config(text=output_text)
-                    language_label.config(text=detected_language)
 
-                    # Update the transcript with the translation
-                    transcript_text.insert(tk.END, f"Translation: {output_text}\n")  # Append the translation
-                    transcript_text.see(tk.END)  # Scroll to the end of the transcript
+                    transcript_text.insert(tk.END, f"Translation: {output_text}\n")
+                    transcript_text.see(tk.END)
 
-                    # Speak the translated text using the new TTS model
+                    # Get the appropriate TTS model and tokenizer for the selected language
+                    tts_model, tokenizer = tts_models[selected_language]
+
                     inputs = tokenizer(translation_text, return_tensors="pt")
                     with torch.no_grad():
-                        output = model(**inputs).waveform
+                        output = tts_model(**inputs).waveform
 
-                    # Start TTS playback in a separate thread
-                    threading.Thread(target=play_translation, args=(output,), daemon=True).start()
-
+                    threading.Thread(target=play_translation, args=(output, selected_language), daemon=True).start()
                     status_label.config(text="Translation complete.")
                 else:
                     print("Translation is empty or failed.")
@@ -137,26 +138,19 @@ def translate_speech():
                 messagebox.showerror("Error", f"Could not request results; {e}")
                 status_label.config(text="Error: Request failed")
             except Exception as e:
-                print(f"An error occurred: {e}")  # Print the error for debugging
+                print(f"An error occurred: {e}")
                 messagebox.showerror("Error", f"An error occurred: {e}")
                 status_label.config(text="Error occurred")
-                
-                
+
 # Function to start the translation in a separate thread
 def start_translation():
     output_label.config(text="")
-    language_label.config(text="")
     status_label.config(text="Starting translation...")
     threading.Thread(target=translate_speech, daemon=True).start()
 
 # Function to exit the application
 def exit_app():
     root.quit()
-
-# Create the main window
-root = tk.Tk()
-root.title("AI Voice Translator")
-root.geometry("400x400")  # Adjusted window size for transcript
 
 # Create and place the buttons and output label
 instructions_label = tk.Label(root, text="Press 'Start Translation' to begin speaking.", wraplength=300)
@@ -170,9 +164,6 @@ exit_button.pack(pady=10)
 
 output_label = tk.Label(root, text="", wraplength=300)
 output_label.pack(pady=10)
-
-language_label = tk.Label(root, text="", wraplength=300)  # Label to show detected language
-language_label.pack(pady=10)
 
 status_label = tk.Label(root, text="", wraplength=300)
 status_label.pack(pady=10)
