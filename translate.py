@@ -1,15 +1,23 @@
 import tkinter as tk
 from tkinter import messagebox
 import speech_recognition as sr
+from transformers import VitsModel, AutoTokenizer
+import torch
 import pyttsx3
 from langdetect import detect
 from googletrans import Translator
 import threading
+import scipy.io.wavfile
+import numpy as np
+import sounddevice as sd
 
 # Initialize the recognizer, translator, and TTS engine
 r = sr.Recognizer()
 translator = Translator(service_urls=['translate.google.com'])
-tts = pyttsx3.init()
+
+# Initialize the TTS model and tokenizer
+model = VitsModel.from_pretrained("facebook/mms-tts-spa")
+tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-spa")
 
 # Function to handle speech recognition and translation
 def translate_speech():
@@ -38,9 +46,22 @@ def translate_speech():
         output_label.config(text=output_text)
         language_label.config(text=detected_language)
 
-        # Speak the translated text
-        tts.say(translation.text)
-        tts.runAndWait()
+        # Speak the translated text using the new TTS model
+        inputs = tokenizer(translation.text, return_tensors="pt")
+        with torch.no_grad():
+            output = model(**inputs).waveform
+
+        # Convert the output to a suitable format
+        output = output.squeeze().numpy()  # Remove unnecessary dimensions
+        output = output * 32767  # Scale to int16 range
+        output = output.astype(np.int16)  # Convert to int16
+
+        # Save the output as a WAV file
+        scipy.io.wavfile.write("translated_speech.wav", rate=model.config.sampling_rate, data=output)
+
+        # Play the audio
+        sd.play(output, samplerate=model.config.sampling_rate)
+        sd.wait()  # Wait until the sound has finished playing
 
         status_label.config(text="Translation complete.")
 
