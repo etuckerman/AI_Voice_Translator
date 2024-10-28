@@ -34,7 +34,24 @@ def update_transcript(text):
     transcript_text.insert(tk.END, f"You: {text}\n")  # Append the user's input
     transcript_text.see(tk.END)  # Scroll to the end of the transcript
 
-import time  # Import time for sleep functionality
+import requests
+
+# Function to translate text using DeepL API
+def deepl_translate(text, dest_language):
+    api_key = "af83cb0b-b297-4dfb-98f1-5f1b9bd991c7:fx"  # Replace with your DeepL API key
+    url = "https://api-free.deepl.com/v2/translate"
+    params = {
+        'auth_key': api_key,
+        'text': text,
+        'target_lang': dest_language.upper()  # DeepL expects language codes in uppercase
+    }
+    
+    response = requests.post(url, data=params)
+    if response.status_code == 200:
+        return response.json()['translations'][0]['text']
+    else:
+        print(f"Translation failed: {response.status_code} {response.text}")
+        return None
 
 def translate_speech():
     while True:  # Loop to continuously listen for new input
@@ -54,10 +71,10 @@ def translate_speech():
                 detected_language = ""
 
                 if input_language == "es":
-                    dest_language = 'en'
+                    dest_language = 'EN'
                     detected_language = "Detected Language: Spanish"
                 elif input_language == "en":
-                    dest_language = 'es'
+                    dest_language = 'ES'
                     detected_language = "Detected Language: English"
                 else:
                     output_text = "Unsupported language"
@@ -72,12 +89,10 @@ def translate_speech():
 
                 while translation_attempts < max_attempts and not translation_success:
                     try:
-                        status_label.config(text=f"Reconnecting to Google Translate...")
-                        translation = translator.translate(text, dest=dest_language)
+                        status_label.config(text=f"Reconnecting to DeepL...")
+                        translation_text = deepl_translate(text, dest_language)
 
-                        # Check if translation is valid
-                        if translation and hasattr(translation, 'text'):
-                            translation_text = translation.text
+                        if translation_text:
                             translation_success = True  # Mark as successful if no exception occurs
                         else:
                             raise ValueError("Translation returned None or invalid response.")
