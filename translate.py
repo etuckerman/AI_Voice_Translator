@@ -21,66 +21,67 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/mms-tts-spa")
 
 # Function to handle speech recognition and translation
 def translate_speech():
-    with sr.Microphone() as source:
-        status_label.config(text="Listening...")
-        r.adjust_for_ambient_noise(source)
-        audio = r.listen(source)
+    while True:  # Loop to continuously listen for new input
+        with sr.Microphone() as source:
+            status_label.config(text="Listening...")
+            r.adjust_for_ambient_noise(source)
+            audio = r.listen(source)
 
-    try:
-        text = r.recognize_google(audio)
-        input_language = detect(text)
+        try:
+            text = r.recognize_google(audio)
+            input_language = detect(text)
 
-        if input_language == "es":
-            translation = translator.translate(text, dest='en')
-            output_text = f"Spanish to English: {translation.text}"
-            detected_language = "Detected Language: Spanish"
-        elif input_language == "en":
-            translation = translator.translate(text, dest='es')
-            output_text = f"English to Spanish: {translation.text}"
-            detected_language = "Detected Language: English"
-        else:
-            output_text = "Unsupported language"
-            detected_language = "Detected Language: Unknown"
+            if input_language == "es":
+                translation = translator.translate(text, dest='en')
+                output_text = f"Spanish to English: {translation.text}"
+                detected_language = "Detected Language: Spanish"
+            elif input_language == "en":
+                translation = translator.translate(text, dest='es')
+                output_text = f"English to Spanish: {translation.text}"
+                detected_language = "Detected Language: English"
+            else:
+                output_text = "Unsupported language"
+                detected_language = "Detected Language: Unknown"
 
-        # Update the GUI with the output
-        output_label.config(text=output_text)
-        language_label.config(text=detected_language)
+            # Update the GUI with the output
+            output_label.config(text=output_text)
+            language_label.config(text=detected_language)
 
-        # Speak the translated text using the new TTS model
-        inputs = tokenizer(translation.text, return_tensors="pt")
-        with torch.no_grad():
-            output = model(**inputs).waveform
+            # Speak the translated text using the new TTS model
+            inputs = tokenizer(translation.text, return_tensors="pt")
+            with torch.no_grad():
+                output = model(**inputs).waveform
 
-        # Convert the output to a suitable format
-        output = output.squeeze().numpy()  # Remove unnecessary dimensions
-        output = output * 32767  # Scale to int16 range
-        output = output.astype(np.int16)  # Convert to int16
+            # Convert the output to a suitable format
+            output = output.squeeze().numpy()  # Remove unnecessary dimensions
+            output = output * 32767  # Scale to int16 range
+            output = output.astype(np.int16)  # Convert to int16
 
-        # Save the output as a WAV file
-        scipy.io.wavfile.write("translated_speech.wav", rate=model.config.sampling_rate, data=output)
+            # Save the output as a WAV file
+            scipy.io.wavfile.write("translated_speech.wav", rate=model.config.sampling_rate, data=output)
 
-        # Play the audio
-        sd.play(output, samplerate=model.config.sampling_rate)
-        sd.wait()  # Wait until the sound has finished playing
+            # Play the audio
+            sd.play(output, samplerate=model.config.sampling_rate)
+            sd.wait()  # Wait until the sound has finished playing
 
-        status_label.config(text="Translation complete.")
+            status_label.config(text="Translation complete.")
 
-    except sr.UnknownValueError:
-        messagebox.showerror("Error", "Could not understand audio")
-        status_label.config(text="Error: Could not understand audio")
-    except sr.RequestError as e:
-        messagebox.showerror("Error", f"Could not request results; {e}")
-        status_label.config(text="Error: Request failed")
-    except Exception as e:
-        messagebox.showerror("Error", f"An error occurred: {e}")
-        status_label.config(text="Error occurred")
+        except sr.UnknownValueError:
+            messagebox.showerror("Error", "Could not understand audio")
+            status_label.config(text="Error: Could not understand audio")
+        except sr.RequestError as e:
+            messagebox.showerror("Error", f"Could not request results; {e}")
+            status_label.config(text="Error: Request failed")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
+            status_label.config(text="Error occurred")
 
 # Function to start the translation in a separate thread
 def start_translation():
     output_label.config(text="")
     language_label.config(text="")
     status_label.config(text="Starting translation...")
-    threading.Thread(target=translate_speech).start()
+    threading.Thread(target=translate_speech, daemon=True).start()
 
 # Function to exit the application
 def exit_app():
