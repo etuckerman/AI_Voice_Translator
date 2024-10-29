@@ -160,6 +160,10 @@ root = tk.Tk()
 root.title("Indian Language Voice Translator")
 root.geometry("600x800")  # Increased size to accommodate more languages
 
+# Add this label after creating the root window
+current_audio_label = tk.Label(root, text="Currently playing: None", wraplength=500)
+current_audio_label.pack(pady=5)
+
 # Create a queue for speech outputs
 speech_queue = queue.Queue()
 is_speaking = False
@@ -172,12 +176,15 @@ def process_speech_queue():
             if not is_speaking and not speech_queue.empty():
                 is_speaking = True
                 output, language = speech_queue.get()
+                current_audio_label.config(text=f"Currently playing: {language}")
                 play_translation(output, language)
+                current_audio_label.config(text="Currently playing: None")
                 is_speaking = False
             time.sleep(0.1)  # Small delay to prevent CPU overuse
         except Exception as e:
             print(f"Error in queue processing: {e}")
             is_speaking = False
+            current_audio_label.config(text="Currently playing: None")
 
 # Function to play the translated audio
 def play_translation(output, language):
