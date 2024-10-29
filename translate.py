@@ -47,6 +47,7 @@ language_codes = {
 # Initialize empty dictionary for lazy loading of TTS models
 tts_models = {}
 
+
 # Function to get or load TTS model
 def get_tts_model(language):
     if language not in tts_models:
@@ -119,46 +120,98 @@ language_options = {
     "English": "en",
 }
 
-# Function to create grouped menu
+# Modify the create_language_menu function to use the update_language_selection function
 def create_language_menu(parent, variable):
     menu = tk.Menu(parent, tearoff=0)
     
     # Hispanic/Latino Languages (prioritized)
     hispanic_menu = tk.Menu(menu, tearoff=0)
     for lang in ["Spanish", "Portuguese"]:
-        hispanic_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+        hispanic_menu.add_radiobutton(label=lang, variable=variable, value=lang, command=lambda lang=lang: update_language_selection(lang))
     menu.add_cascade(label="Hispanic/Latino Languages", menu=hispanic_menu)
     
     # Asian Languages
     asian_menu = tk.Menu(menu, tearoff=0)
     for lang in ["Vietnamese", "Korean", "Tagalog"]:
-        asian_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+        asian_menu.add_radiobutton(label=lang, variable=variable, value=lang, command=lambda lang=lang: update_language_selection(lang))
     menu.add_cascade(label="Asian Languages", menu=asian_menu)
     
     # South Asian Languages
     south_asian_menu = tk.Menu(menu, tearoff=0)
     for lang in ["Hindi", "Bengali", "Urdu", "Punjabi", "Tamil", "Telugu", "Gujarati"]:
-        south_asian_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+        south_asian_menu.add_radiobutton(label=lang, variable=variable, value=lang, command=lambda lang=lang: update_language_selection(lang))
     menu.add_cascade(label="South Asian Languages", menu=south_asian_menu)
     
     # Middle Eastern Languages
     middle_eastern_menu = tk.Menu(menu, tearoff=0)
     for lang in ["Arabic", "Farsi"]:
-        middle_eastern_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+        middle_eastern_menu.add_radiobutton(label=lang, variable=variable, value=lang, command=lambda lang=lang: update_language_selection(lang))
     menu.add_cascade(label="Middle Eastern Languages", menu=middle_eastern_menu)
     
     # European Languages
     european_menu = tk.Menu(menu, tearoff=0)
     for lang in ["Russian", "Ukrainian", "Polish", "English"]:
-        european_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+        european_menu.add_radiobutton(label=lang, variable=variable, value=lang, command=lambda lang=lang: update_language_selection(lang))
     menu.add_cascade(label="European Languages", menu=european_menu)
     
     return menu
 
 # Create the main window
 root = tk.Tk()
-root.title("Indian Language Voice Translator")
+# Change the title of the application
+root.title("Multilingual Voice Translator")
 root.geometry("600x800")  # Increased size to accommodate more languages
+
+# Add a loading label to the GUI
+loading_label = tk.Label(root, text="Loading models, please wait...", wraplength=500)
+loading_label.pack(pady=10)
+
+# Function to preload all TTS models
+def preload_models():
+    for language in language_codes.keys():
+        try:
+            get_tts_model(language)
+            loading_label.config(text=f"Loaded model for {language}...")
+        except Exception as e:
+            print(f"Error loading model for {language}: {e}")
+            loading_label.config(text=f"Error loading model for {language}")
+    
+    # Update the loading label to indicate completion
+    loading_label.config(text="All models loaded successfully!")
+
+
+# Start preloading models in a separate thread
+threading.Thread(target=preload_models, daemon=True).start()
+
+# Update the process_partial_speech function to remove delays
+def process_partial_speech(partial_text, selected_language, dest_language):
+    try:
+        translation_text = translate_text(partial_text, dest_language)
+        if translation_text:
+            output_text = f"Translation ({selected_language}): {translation_text}"
+            output_label.config(text=output_text)
+            transcript_text.insert(tk.END, f"Translation: {translation_text}\n")
+            transcript_text.see(tk.END)
+
+            status_label.config(text="Generating speech...")
+            tts_model, tokenizer = get_tts_model(selected_language)
+
+            # Special handling for Korean
+            if selected_language == "Korean":
+                inputs = tokenizer(translation_text, return_tensors="pt")
+                inputs = {k: v.long() if torch.is_floating_point(v) else v 
+                          for k, v in inputs.items()}
+            else:
+                inputs = tokenizer(translation_text, return_tensors="pt")
+
+            with torch.no_grad():
+                output = tts_model(**inputs).waveform
+
+            status_label.config(text="Queueing translation...")
+            speech_queue.put((output, selected_language))
+    except Exception as e:
+        print(f"Error in partial processing: {e}")
+
 
 # Add this label after creating the root window
 current_audio_label = tk.Label(root, text="Currently playing: None", wraplength=500)
@@ -232,7 +285,11 @@ def translate_text(text, dest_language):
     except Exception as e:
         print(f"Translation failed: {e}")
         return None
-
+    
+# Update the language selection button text when a language is selected
+def update_language_selection(value):
+    language_var.set(value)
+    
 # Create a frame for the language selection
 language_frame = tk.Frame(root)
 language_frame.pack(pady=10)
@@ -243,11 +300,12 @@ language_label.pack(side=tk.LEFT, padx=5)
 
 # Create the language dropdown with groups
 language_var = tk.StringVar()
-language_var.set("English")  # Default value
-language_button = tk.Menubutton(language_frame, text="Select Language", relief=tk.RAISED)
+language_var.set("Select Language")  # Default value
+language_button = tk.Menubutton(language_frame, textvariable=language_var, relief=tk.RAISED)
 language_button.pack(side=tk.LEFT)
 language_button.menu = create_language_menu(language_button, language_var)
 language_button["menu"] = language_button.menu
+
 
 # Add these global variables at the top with other initializations
 is_listening = False
@@ -397,7 +455,7 @@ def test_all_languages():
     threading.Thread(target=run_test, daemon=True).start()
     
 # Create and place the UI elements
-instructions_label = tk.Label(root, text="Press 'Start Translation' and speak in any language.\nThe system will translate to your selected Indian language.", 
+instructions_label = tk.Label(root, text="Press 'Start Translation' and speak in any language.\nThe system will translate to your selected language.", 
                             wraplength=500)
 instructions_label.pack(pady=10)
 
