@@ -3,3 +3,8 @@ pyttsx3
 langdetect
 googletrans==4.0.0-rc1
 keyboard
+torch
+transformers
+numpy
+sounddevice
+uroman

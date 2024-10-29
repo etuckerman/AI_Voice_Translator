@@ -15,17 +15,33 @@ r = sr.Recognizer()
 
 # Dictionary to map language names to their model codes
 language_codes = {
-    "English": "eng",
+    # Hispanic/Latino Languages (Most common in USA)
+    "Spanish": "spa",
+    "Portuguese": "por",
+    
+    # Asian Languages
+    "Vietnamese": "vie",
+    "Korean": "kor",
+    "Tagalog": "tgl",
+    
+    # Middle Eastern Languages
+    "Arabic": "ara",
+    "Farsi": "fas",
+    
+    # South Asian Languages
     "Hindi": "hin",
     "Bengali": "ben",
+    "Urdu": "urd-script_arabic",
+    "Punjabi": "pan",
     "Tamil": "tam",
     "Telugu": "tel",
-    "Marathi": "mar",
     "Gujarati": "guj",
-    "Kannada": "kan",
-    "Malayalam": "mal",
-    "Punjabi": "pan",
-    "Urdu": "urd-script_arabic"
+    
+    # European Languages
+    "Russian": "rus",
+    "Ukrainian": "ukr",
+    "Polish": "pol",
+    "English": "eng",
 }
 
 # Initialize empty dictionary for lazy loading of TTS models
@@ -53,7 +69,15 @@ def process_partial_speech(partial_text, selected_language, dest_language):
             status_label.config(text="Generating speech...")
             tts_model, tokenizer = get_tts_model(selected_language)
 
-            inputs = tokenizer(translation_text, return_tensors="pt")
+            # Special handling for Korean
+            if selected_language == "Korean":
+                inputs = tokenizer(translation_text, return_tensors="pt")
+                # Convert float tensors to long tensors for Korean
+                inputs = {k: v.long() if torch.is_floating_point(v) else v 
+                         for k, v in inputs.items()}
+            else:
+                inputs = tokenizer(translation_text, return_tensors="pt")
+
             with torch.no_grad():
                 output = tts_model(**inputs).waveform
 
@@ -64,18 +88,72 @@ def process_partial_speech(partial_text, selected_language, dest_language):
         
 # List of languages for the dropdown with correct language codes
 language_options = {
-    "English": "en",
+    # Asian Languages
+    "Chinese (Mandarin)": "zh-cn",
+    "Vietnamese": "vi",
+    "Korean": "ko",
+    "Tagalog": "tl",
+    "Japanese": "ja",
+    
+    # Hispanic/Latino Languages
+    "Spanish": "es",
+    "Portuguese": "pt",
+    
+    # South Asian Languages
     "Hindi": "hi",
     "Bengali": "bn",
+    "Urdu": "ur",
+    "Punjabi": "pa",
     "Tamil": "ta",
     "Telugu": "te",
-    "Marathi": "mr",
     "Gujarati": "gu",
-    "Kannada": "kn",
-    "Malayalam": "ml",
-    "Punjabi": "pa",
-    "Urdu": "ur"
+    
+    # Middle Eastern Languages
+    "Arabic": "ar",
+    "Farsi": "fa",
+    
+    # European Languages
+    "Russian": "ru",
+    "Ukrainian": "uk",
+    "Polish": "pl",
+    "English": "en",
 }
+
+# Function to create grouped menu
+def create_language_menu(parent, variable):
+    menu = tk.Menu(parent, tearoff=0)
+    
+    # Hispanic/Latino Languages (prioritized)
+    hispanic_menu = tk.Menu(menu, tearoff=0)
+    for lang in ["Spanish", "Portuguese"]:
+        hispanic_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+    menu.add_cascade(label="Hispanic/Latino Languages", menu=hispanic_menu)
+    
+    # Asian Languages
+    asian_menu = tk.Menu(menu, tearoff=0)
+    for lang in ["Vietnamese", "Korean", "Tagalog"]:
+        asian_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+    menu.add_cascade(label="Asian Languages", menu=asian_menu)
+    
+    # South Asian Languages
+    south_asian_menu = tk.Menu(menu, tearoff=0)
+    for lang in ["Hindi", "Bengali", "Urdu", "Punjabi", "Tamil", "Telugu", "Gujarati"]:
+        south_asian_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+    menu.add_cascade(label="South Asian Languages", menu=south_asian_menu)
+    
+    # Middle Eastern Languages
+    middle_eastern_menu = tk.Menu(menu, tearoff=0)
+    for lang in ["Arabic", "Farsi"]:
+        middle_eastern_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+    menu.add_cascade(label="Middle Eastern Languages", menu=middle_eastern_menu)
+    
+    # European Languages
+    european_menu = tk.Menu(menu, tearoff=0)
+    for lang in ["Russian", "Ukrainian", "Polish", "English"]:
+        european_menu.add_radiobutton(label=lang, variable=variable, value=lang)
+    menu.add_cascade(label="European Languages", menu=european_menu)
+    
+    return menu
 
 # Create the main window
 root = tk.Tk()
@@ -156,11 +234,13 @@ language_frame.pack(pady=10)
 language_label = tk.Label(language_frame, text="Select Target Language:")
 language_label.pack(side=tk.LEFT, padx=5)
 
-# Create the language dropdown
+# Create the language dropdown with groups
 language_var = tk.StringVar()
-language_var.set("Hindi")  # Default value
-language_menu = tk.OptionMenu(language_frame, language_var, *language_options.keys())
-language_menu.pack(side=tk.LEFT)
+language_var.set("English")  # Default value
+language_button = tk.Menubutton(language_frame, text="Select Language", relief=tk.RAISED)
+language_button.pack(side=tk.LEFT)
+language_button.menu = create_language_menu(language_button, language_var)
+language_button["menu"] = language_button.menu
 
 # Add these global variables at the top with other initializations
 is_listening = False
@@ -234,19 +314,55 @@ def exit_app():
         listening_thread.join(timeout=1)
     root.quit()
 
+def test_current_language():
+    test_button_current.config(state=tk.DISABLED)  # Disable button during test
+    status_label.config(text="Testing current language...")
+    
+    def run_single_test():
+        test_text = "The quick brown fox jumps over the lazy dog, while five boxing wizards jump quickly."
+        selected_language = language_var.get()
+        
+        try:
+            # Translate test text to target language
+            dest_code = language_options[selected_language]
+            translator = Translator()
+            translation = translator.translate(test_text, dest=dest_code)
+            
+            # Update transcript
+            transcript_text.insert(tk.END, f"\nTesting {selected_language}: {translation.text}\n")
+            transcript_text.see(tk.END)
+            
+            # Generate and queue speech
+            tts_model, tokenizer = get_tts_model(selected_language)
+            inputs = tokenizer(translation.text, return_tensors="pt")
+            with torch.no_grad():
+                output = tts_model(**inputs).waveform
+            
+            speech_queue.put((output, selected_language))
+            
+        except Exception as e:
+            transcript_text.insert(tk.END, f"Error testing {selected_language}: {str(e)}\n")
+            transcript_text.see(tk.END)
+        
+        status_label.config(text="Current language test complete!")
+        test_button_current.config(state=tk.NORMAL)  # Re-enable button
+    
+    # Run test in separate thread
+    threading.Thread(target=run_single_test, daemon=True).start()
+
 # Add this function after the other function definitions
 def test_all_languages():
     test_button.config(state=tk.DISABLED)  # Disable button during test
     status_label.config(text="Starting language test...")
     
     def run_test():
-        test_text = "This is a test"
+        test_text = "The quick brown fox jumps over the lazy dog, while five boxing wizards jump quickly."
         
         for language in language_codes.keys():
             try:
                 status_label.config(text=f"Testing {language}...")
                 
-                # Translate "This is a test" to target language
+                # Translate "The quick brown fox jumps over the lazy dog, while five boxing wizards jump quickly." to target language
                 dest_code = language_options[language]
                 translator = Translator()
                 translation = translator.translate(test_text, dest=dest_code)
@@ -287,6 +403,9 @@ start_button.pack(side=tk.LEFT, padx=5)
 
 test_button = tk.Button(button_frame, text="Test All Languages", command=test_all_languages)
 test_button.pack(side=tk.LEFT, padx=5)
+
+test_button_current = tk.Button(button_frame, text="Test Current Language", command=test_current_language)
+test_button_current.pack(side=tk.LEFT, padx=5)
 
 exit_button = tk.Button(button_frame, text="Exit", command=exit_app)
 exit_button.pack(side=tk.LEFT, padx=5)
