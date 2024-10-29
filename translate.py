@@ -105,10 +105,30 @@ def process_speech_queue():
 def play_translation(output, language):
     try:
         output = output.squeeze().numpy()
+        
+        # Apply voice modifications
+        # Speed modification (resample the audio)
+        if speed_var.get() != 1.0:
+            original_length = len(output)
+            new_length = int(original_length / speed_var.get())
+            indices = np.linspace(0, original_length-1, new_length)
+            output = np.interp(indices, np.arange(original_length), output)
+        
+        # Pitch modification (basic implementation)
+        if pitch_var.get() != 1.0:
+            # We'll modify the sample rate instead of actual pitch
+            sample_rate = int(get_tts_model(language)[0].config.sampling_rate * pitch_var.get())
+        else:
+            sample_rate = get_tts_model(language)[0].config.sampling_rate
+        
+        # Volume modification
+        output = output * volume_var.get()
+        
+        # Convert to 16-bit integer format
         output = output * 32767
         output = output.astype(np.int16)
         
-        sd.play(output, samplerate=get_tts_model(language)[0].config.sampling_rate)
+        sd.play(output, samplerate=sample_rate)
         sd.wait()
         status_label.config(text="Ready for more speech...")
     except Exception as e:
@@ -295,13 +315,47 @@ scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 transcript_text.config(yscrollcommand=scrollbar.set)
 scrollbar.config(command=transcript_text.yview)
 
+# Create frame for voice controls
+voice_control_frame = tk.Frame(root)
+voice_control_frame.pack(pady=10)
+
+# Speed control
+speed_label = tk.Label(voice_control_frame, text="Speed:")
+speed_label.pack()
+speed_var = tk.DoubleVar(value=1.0)
+speed_slider = tk.Scale(voice_control_frame, from_=0.5, to=2.0, resolution=0.1,
+                       orient=tk.HORIZONTAL, variable=speed_var, length=200)
+speed_slider.pack()
+
+# Pitch control
+pitch_label = tk.Label(voice_control_frame, text="Pitch:")
+pitch_label.pack()
+pitch_var = tk.DoubleVar(value=1.0)
+pitch_slider = tk.Scale(voice_control_frame, from_=0.5, to=2.0, resolution=0.1,
+                       orient=tk.HORIZONTAL, variable=pitch_var, length=200)
+pitch_slider.pack()
+
+# Volume control
+volume_label = tk.Label(voice_control_frame, text="Volume:")
+volume_label.pack()
+volume_var = tk.DoubleVar(value=1.0)
+volume_slider = tk.Scale(voice_control_frame, from_=0.1, to=2.0, resolution=0.1,
+                        orient=tk.HORIZONTAL, variable=volume_var, length=200)
+volume_slider.pack()
+
 # Preload the default language model (Hindi)
 get_tts_model("Hindi")
 
 # Start the queue processor
 threading.Thread(target=process_speech_queue, daemon=True).start()
 
+def reset_voice_controls():
+    speed_var.set(1.0)
+    pitch_var.set(1.0)
+    volume_var.set(1.0)
 
+reset_button = tk.Button(voice_control_frame, text="Reset Voice Settings", command=reset_voice_controls)
+reset_button.pack(pady=5)
 
 # Run the application
 root.mainloop()
