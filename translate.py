@@ -12,21 +12,55 @@ from googletrans import Translator
 # Initialize the recognizer
 r = sr.Recognizer()
 
-# Initialize TTS models and tokenizers for different languages
-tts_models = {
-    "English": (VitsModel.from_pretrained("facebook/mms-tts-eng"), AutoTokenizer.from_pretrained("facebook/mms-tts-eng")),
-    "Hindi": (VitsModel.from_pretrained("facebook/mms-tts-hin"), AutoTokenizer.from_pretrained("facebook/mms-tts-hin")),
-    "Bengali": (VitsModel.from_pretrained("facebook/mms-tts-ben"), AutoTokenizer.from_pretrained("facebook/mms-tts-ben")),
-    "Tamil": (VitsModel.from_pretrained("facebook/mms-tts-tam"), AutoTokenizer.from_pretrained("facebook/mms-tts-tam")),
-    "Telugu": (VitsModel.from_pretrained("facebook/mms-tts-tel"), AutoTokenizer.from_pretrained("facebook/mms-tts-tel")),
-    "Marathi": (VitsModel.from_pretrained("facebook/mms-tts-mar"), AutoTokenizer.from_pretrained("facebook/mms-tts-mar")),
-    "Gujarati": (VitsModel.from_pretrained("facebook/mms-tts-guj"), AutoTokenizer.from_pretrained("facebook/mms-tts-guj")),
-    "Kannada": (VitsModel.from_pretrained("facebook/mms-tts-kan"), AutoTokenizer.from_pretrained("facebook/mms-tts-kan")),
-    "Malayalam": (VitsModel.from_pretrained("facebook/mms-tts-mal"), AutoTokenizer.from_pretrained("facebook/mms-tts-mal")),
-    "Punjabi": (VitsModel.from_pretrained("facebook/mms-tts-pan"), AutoTokenizer.from_pretrained("facebook/mms-tts-pan")),
-    "Urdu": (VitsModel.from_pretrained("facebook/mms-tts-urd-script_arabic"), AutoTokenizer.from_pretrained("facebook/mms-tts-urd-script_arabic"))
+# Dictionary to map language names to their model codes
+language_codes = {
+    "English": "eng",
+    "Hindi": "hin",
+    "Bengali": "ben",
+    "Tamil": "tam",
+    "Telugu": "tel",
+    "Marathi": "mar",
+    "Gujarati": "guj",
+    "Kannada": "kan",
+    "Malayalam": "mal",
+    "Punjabi": "pan",
+    "Urdu": "urd-script_arabic"
 }
 
+# Initialize empty dictionary for lazy loading of TTS models
+tts_models = {}
+
+# Function to get or load TTS model
+def get_tts_model(language):
+    if language not in tts_models:
+        model_name = f"facebook/mms-tts-{language_codes[language]}"
+        tts_models[language] = (
+            VitsModel.from_pretrained(model_name),
+            AutoTokenizer.from_pretrained(model_name)
+        )
+    return tts_models[language]
+
+def process_partial_speech(partial_text, selected_language, dest_language):
+    try:
+        translation_text = translate_text(partial_text, dest_language)
+        if translation_text:
+            output_text = f"Translation ({selected_language}): {translation_text}"
+            output_label.config(text=output_text)
+            transcript_text.insert(tk.END, f"Translation: {translation_text}\n")
+            transcript_text.see(tk.END)
+
+            status_label.config(text="Generating speech...")
+            tts_model, tokenizer = get_tts_model(selected_language)
+
+            inputs = tokenizer(translation_text, return_tensors="pt")
+            with torch.no_grad():
+                output = tts_model(**inputs).waveform
+
+            status_label.config(text="Playing translation...")
+            threading.Thread(target=play_translation, args=(output, selected_language), daemon=True).start()
+    except Exception as e:
+        print(f"Error in partial processing: {e}")
+        
 # List of languages for the dropdown with correct language codes
 language_options = {
     "English": "en",
@@ -53,9 +87,13 @@ def play_translation(output, language):
         output = output.squeeze().numpy()
         output = output * 32767
         output = output.astype(np.int16)
-        sd.play(output, samplerate=tts_models[language][0].config.sampling_rate)
+        
+        # Stop any currently playing audio
+        sd.stop()
+        
+        sd.play(output, samplerate=get_tts_model(language)[0].config.sampling_rate)
         sd.wait()
-        status_label.config(text="Playback complete.")
+        status_label.config(text="Ready for more speech...")
     except Exception as e:
         status_label.config(text=f"Audio playback error: {str(e)}")
 
@@ -93,42 +131,43 @@ def translate_speech():
         with sr.Microphone() as source:
             status_label.config(text="Listening... Speak now.")
             r.adjust_for_ambient_noise(source)
-            audio = r.listen(source)
-
+            
+            # Initialize variables for continuous recognition
+            phrase_time_limit = 3  # Process every 3 seconds of speech
+            last_sample = bytes()
+            last_text = ""
+            
             try:
-                text = r.recognize_google(audio)
-                update_transcript(text)
+                while True:
+                    audio = r.listen(source, phrase_time_limit=phrase_time_limit)
+                    
+                    try:
+                        partial_text = r.recognize_google(audio)
+                        if partial_text != last_text:  # Only process if text has changed
+                            update_transcript(partial_text)
+                            last_text = partial_text
 
-                selected_language = language_var.get()
-                dest_language = language_options[selected_language]
+                            selected_language = language_var.get()
+                            dest_language = language_options[selected_language]
 
-                status_label.config(text="Translating...")
-                translation_text = translate_text(text, dest_language)
+                            # Process this chunk in a separate thread
+                            threading.Thread(
+                                target=process_partial_speech,
+                                args=(partial_text, selected_language, dest_language),
+                                daemon=True
+                            ).start()
 
-                if translation_text:
-                    output_text = f"Translation ({selected_language}): {translation_text}"
-                    output_label.config(text=output_text)
-                    transcript_text.insert(tk.END, f"Translation: {translation_text}\n")
-                    transcript_text.see(tk.END)
+                    except sr.UnknownValueError:
+                        continue  # Skip if no speech is detected
+                    except Exception as e:
+                        print(f"Error in recognition: {e}")
+                        continue
 
-                    status_label.config(text="Generating speech...")
-                    tts_model, tokenizer = tts_models[selected_language]
-
-                    inputs = tokenizer(translation_text, return_tensors="pt")
-                    with torch.no_grad():
-                        output = tts_model(**inputs).waveform
-
-                    status_label.config(text="Playing translation...")
-                    threading.Thread(target=play_translation, args=(output, selected_language), daemon=True).start()
-                else:
-                    status_label.config(text="Translation failed. Please try again.")
-
-            except sr.UnknownValueError:
-                status_label.config(text="Could not understand audio. Please try again.")
-            except sr.RequestError as e:
-                status_label.config(text=f"Speech recognition error: {str(e)}")
+            except KeyboardInterrupt:
+                break
             except Exception as e:
                 status_label.config(text=f"Error: {str(e)}")
+                time.sleep(1)  # Prevent rapid error loops
 
 # Function to start the translation in a separate thread
 def start_translation():
@@ -178,6 +217,9 @@ scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
 transcript_text.config(yscrollcommand=scrollbar.set)
 scrollbar.config(command=transcript_text.yview)
+
+# Preload the default language model (Hindi)
+get_tts_model("Hindi")
 
 # Run the application
 root.mainloop()
