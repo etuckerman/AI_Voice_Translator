@@ -160,7 +160,7 @@ def create_language_menu(parent, variable):
 root = tk.Tk()
 # Change the title of the application
 root.title("Multilingual Voice Translator")
-root.geometry("600x800")  # Increased size to accommodate more languages
+root.geometry("600x1000")  # Increased height to 1000 pixels
 
 # Add a loading label to the GUI
 loading_label = tk.Label(root, text="Loading models, please wait...", wraplength=500, fg="blue")
@@ -333,6 +333,10 @@ def translate_speech():
                             update_transcript(partial_text)
 
                             selected_language = language_var.get()
+                            if selected_language == "Select Language":
+                                messagebox.showwarning("Language Not Selected", "Please select a target language before speaking.")
+                                continue  # Skip processing if no language is selected
+
                             dest_language = language_options[selected_language]
 
                             threading.Thread(
@@ -456,13 +460,13 @@ def test_all_languages():
     threading.Thread(target=run_test, daemon=True).start()
     
 # Create and place the UI elements
-instructions_label = tk.Label(root, text="Press 'Start Translation'...", font=("Helvetica", 12, "bold"), wraplength=500)
+instructions_label = tk.Label(root, text="Select a target language and then press 'Start Translation'...", font=("Helvetica", 12, "bold"), wraplength=500)
 
 instructions_label.pack(pady=10)
 
 # Create a frame for buttons
 button_frame = tk.Frame(root)
-button_frame.pack(pady=10)
+button_frame.pack(pady=0)  # Set pady to 0 to remove the gap
 
 start_button = tk.Button(button_frame, text="Start Translation", command=start_translation)
 start_button.pack(side=tk.LEFT, padx=5)
@@ -481,30 +485,29 @@ output_label = tk.Label(root, text="", wraplength=500)
 output_label.pack(pady=10)
 
 status_label = tk.Label(root, text="", wraplength=500, fg="green")
-
 status_label.pack(pady=10)
 
 # Create a frame for the transcript
 transcript_frame = tk.Frame(root)
-transcript_frame.pack(pady=10, fill=tk.BOTH, expand=True)
+transcript_frame.pack(pady=10, fill=tk.BOTH, expand=True)  # Ensure it expands to fill available space
 
 transcript_label = tk.Label(transcript_frame, text="Conversation History:")
-transcript_label.pack()
+transcript_label.pack(pady=0)  # Set pady to 0 to remove the gap
 
-transcript_text = tk.Text(transcript_frame, wrap=tk.WORD, height=15, width=60)
-transcript_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
-
-# Add a scrollbar to the transcript
-scrollbar = tk.Scrollbar(transcript_frame, orient="vertical")
-scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+# Add a text widget for displaying the conversation history
+transcript_text = tk.Text(transcript_frame, wrap=tk.WORD)
+transcript_text.pack(expand=True, fill=tk.BOTH)  # Allow it to expand and fill the frame
 
 
-transcript_text.config(yscrollcommand=scrollbar.set)
-scrollbar.config(command=transcript_text.yview)
+# Add this function before creating the reset button
+def reset_voice_controls():
+    speed_var.set(1.0)
+    pitch_var.set(1.0)
+    volume_var.set(1.0)
 
 # Create frame for voice controls
 voice_control_frame = tk.Frame(root)
-voice_control_frame.pack(pady=10)
+voice_control_frame.pack(pady=10, fill=tk.X, expand=True)  # Allow it to expand vertically
 
 # Speed control
 speed_label = tk.Label(voice_control_frame, text="Speed:")
@@ -530,19 +533,16 @@ volume_slider = tk.Scale(voice_control_frame, from_=0.1, to=2.0, resolution=0.1,
                         orient=tk.HORIZONTAL, variable=volume_var, length=200)
 volume_slider.pack()
 
+# Reset button
+reset_button = tk.Button(voice_control_frame, text="Reset Voice Settings", command=reset_voice_controls)
+reset_button.pack(pady=5)
+
+
 # Preload the default language model (Hindi)
 get_tts_model("Hindi")
 
 # Start the queue processor
 threading.Thread(target=process_speech_queue, daemon=True).start()
-
-def reset_voice_controls():
-    speed_var.set(1.0)
-    pitch_var.set(1.0)
-    volume_var.set(1.0)
-
-reset_button = tk.Button(voice_control_frame, text="Reset Voice Settings", command=reset_voice_controls)
-reset_button.pack(pady=5)
 
 # Run the application
 root.mainloop()
