@@ -8,6 +8,7 @@ import numpy as np
 import sounddevice as sd
 import time
 from googletrans import Translator
+import queue
 
 # Initialize the recognizer
 r = sr.Recognizer()
@@ -56,8 +57,8 @@ def process_partial_speech(partial_text, selected_language, dest_language):
             with torch.no_grad():
                 output = tts_model(**inputs).waveform
 
-            status_label.config(text="Playing translation...")
-            threading.Thread(target=play_translation, args=(output, selected_language), daemon=True).start()
+            status_label.config(text="Queueing translation...")
+            speech_queue.put((output, selected_language))
     except Exception as e:
         print(f"Error in partial processing: {e}")
         
@@ -81,15 +82,31 @@ root = tk.Tk()
 root.title("Indian Language Voice Translator")
 root.geometry("600x800")  # Increased size to accommodate more languages
 
+# Create a queue for speech outputs
+speech_queue = queue.Queue()
+is_speaking = False
+
+# Function to handle the speech queue
+def process_speech_queue():
+    global is_speaking
+    while True:
+        try:
+            if not is_speaking and not speech_queue.empty():
+                is_speaking = True
+                output, language = speech_queue.get()
+                play_translation(output, language)
+                is_speaking = False
+            time.sleep(0.1)  # Small delay to prevent CPU overuse
+        except Exception as e:
+            print(f"Error in queue processing: {e}")
+            is_speaking = False
+
 # Function to play the translated audio
 def play_translation(output, language):
     try:
         output = output.squeeze().numpy()
         output = output * 32767
         output = output.astype(np.int16)
-        
-        # Stop any currently playing audio
-        sd.stop()
         
         sd.play(output, samplerate=get_tts_model(language)[0].config.sampling_rate)
         sd.wait()
@@ -125,32 +142,31 @@ language_var.set("Hindi")  # Default value
 language_menu = tk.OptionMenu(language_frame, language_var, *language_options.keys())
 language_menu.pack(side=tk.LEFT)
 
+# Add these global variables at the top with other initializations
+is_listening = False
+listening_thread = None
+
 # Function to translate speech
 def translate_speech():
-    while True:
+    global is_listening
+    
+    while is_listening:
         with sr.Microphone() as source:
             status_label.config(text="Listening... Speak now.")
             r.adjust_for_ambient_noise(source)
             
-            # Initialize variables for continuous recognition
-            phrase_time_limit = 3  # Process every 3 seconds of speech
-            last_sample = bytes()
-            last_text = ""
-            
             try:
-                while True:
-                    audio = r.listen(source, phrase_time_limit=phrase_time_limit)
+                while is_listening:
+                    audio = r.listen(source, phrase_time_limit=3)
                     
                     try:
                         partial_text = r.recognize_google(audio)
-                        if partial_text != last_text:  # Only process if text has changed
+                        if partial_text:
                             update_transcript(partial_text)
-                            last_text = partial_text
 
                             selected_language = language_var.get()
                             dest_language = language_options[selected_language]
 
-                            # Process this chunk in a separate thread
                             threading.Thread(
                                 target=process_partial_speech,
                                 args=(partial_text, selected_language, dest_language),
@@ -158,25 +174,44 @@ def translate_speech():
                             ).start()
 
                     except sr.UnknownValueError:
-                        continue  # Skip if no speech is detected
+                        continue
                     except Exception as e:
                         print(f"Error in recognition: {e}")
                         continue
 
-            except KeyboardInterrupt:
-                break
             except Exception as e:
-                status_label.config(text=f"Error: {str(e)}")
-                time.sleep(1)  # Prevent rapid error loops
+                if is_listening:  # Only show error if we're still supposed to be listening
+                    status_label.config(text=f"Error: {str(e)}")
+                    time.sleep(1)
+    
+    status_label.config(text="Stopped listening.")
 
 # Function to start the translation in a separate thread
 def start_translation():
-    output_label.config(text="")
-    status_label.config(text="Starting translation...")
-    threading.Thread(target=translate_speech, daemon=True).start()
+    global is_listening, listening_thread
+    
+    if is_listening:
+        # If already listening, stop the current session
+        is_listening = False
+        if listening_thread:
+            listening_thread.join(timeout=1)
+        start_button.config(text="Start Translation")
+        status_label.config(text="Stopped listening.")
+    else:
+        # Start new listening session
+        is_listening = True
+        start_button.config(text="Stop Translation")
+        output_label.config(text="")
+        status_label.config(text="Starting translation...")
+        listening_thread = threading.Thread(target=translate_speech, daemon=True)
+        listening_thread.start()
 
 # Function to exit the application
 def exit_app():
+    global is_listening
+    is_listening = False
+    if listening_thread:
+        listening_thread.join(timeout=1)
     root.quit()
 
 # Create and place the UI elements
@@ -220,6 +255,9 @@ scrollbar.config(command=transcript_text.yview)
 
 # Preload the default language model (Hindi)
 get_tts_model("Hindi")
+
+# Start the queue processor
+threading.Thread(target=process_speech_queue, daemon=True).start()
 
 # Run the application
 root.mainloop()
