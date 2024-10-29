@@ -214,6 +214,45 @@ def exit_app():
         listening_thread.join(timeout=1)
     root.quit()
 
+# Add this function after the other function definitions
+def test_all_languages():
+    test_button.config(state=tk.DISABLED)  # Disable button during test
+    status_label.config(text="Starting language test...")
+    
+    def run_test():
+        test_text = "This is a test"
+        
+        for language in language_codes.keys():
+            try:
+                status_label.config(text=f"Testing {language}...")
+                
+                # Translate "This is a test" to target language
+                dest_code = language_options[language]
+                translator = Translator()
+                translation = translator.translate(test_text, dest=dest_code)
+                
+                # Update transcript
+                transcript_text.insert(tk.END, f"\nTesting {language}: {translation.text}\n")
+                transcript_text.see(tk.END)
+                
+                # Generate and queue speech
+                tts_model, tokenizer = get_tts_model(language)
+                inputs = tokenizer(translation.text, return_tensors="pt")
+                with torch.no_grad():
+                    output = tts_model(**inputs).waveform
+                
+                speech_queue.put((output, language))
+                
+            except Exception as e:
+                transcript_text.insert(tk.END, f"Error testing {language}: {str(e)}\n")
+                transcript_text.see(tk.END)
+        
+        status_label.config(text="Language test complete!")
+        test_button.config(state=tk.NORMAL)  # Re-enable button
+    
+    # Run test in separate thread
+    threading.Thread(target=run_test, daemon=True).start()
+    
 # Create and place the UI elements
 instructions_label = tk.Label(root, text="Press 'Start Translation' and speak in any language.\nThe system will translate to your selected Indian language.", 
                             wraplength=500)
@@ -225,6 +264,9 @@ button_frame.pack(pady=10)
 
 start_button = tk.Button(button_frame, text="Start Translation", command=start_translation)
 start_button.pack(side=tk.LEFT, padx=5)
+
+test_button = tk.Button(button_frame, text="Test All Languages", command=test_all_languages)
+test_button.pack(side=tk.LEFT, padx=5)
 
 exit_button = tk.Button(button_frame, text="Exit", command=exit_app)
 exit_button.pack(side=tk.LEFT, padx=5)
@@ -258,6 +300,8 @@ get_tts_model("Hindi")
 
 # Start the queue processor
 threading.Thread(target=process_speech_queue, daemon=True).start()
+
+
 
 # Run the application
 root.mainloop()
