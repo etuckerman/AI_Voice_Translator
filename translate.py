@@ -163,7 +163,8 @@ root.title("Multilingual Voice Translator")
 root.geometry("600x800")  # Increased size to accommodate more languages
 
 # Add a loading label to the GUI
-loading_label = tk.Label(root, text="Loading models, please wait...", wraplength=500)
+loading_label = tk.Label(root, text="Loading models, please wait...", wraplength=500, fg="blue")
+
 loading_label.pack(pady=10)
 
 # Function to preload all TTS models
@@ -289,6 +290,8 @@ def translate_text(text, dest_language):
 # Update the language selection button text when a language is selected
 def update_language_selection(value):
     language_var.set(value)
+    status_label.config(text=f"Language set to: {value}")
+
     
 # Create a frame for the language selection
 language_frame = tk.Frame(root)
@@ -373,11 +376,9 @@ def start_translation():
 
 # Function to exit the application
 def exit_app():
-    global is_listening
-    is_listening = False
-    if listening_thread:
-        listening_thread.join(timeout=1)
-    root.quit()
+    if messagebox.askokcancel("Quit", "Do you really want to quit?"):
+        root.quit()
+
 
 def test_current_language():
     test_button_current.config(state=tk.DISABLED)  # Disable button during test
@@ -455,8 +456,8 @@ def test_all_languages():
     threading.Thread(target=run_test, daemon=True).start()
     
 # Create and place the UI elements
-instructions_label = tk.Label(root, text="Press 'Start Translation' and speak in any language.\nThe system will translate to your selected language.", 
-                            wraplength=500)
+instructions_label = tk.Label(root, text="Press 'Start Translation'...", font=("Helvetica", 12, "bold"), wraplength=500)
+
 instructions_label.pack(pady=10)
 
 # Create a frame for buttons
@@ -479,7 +480,8 @@ exit_button.pack(side=tk.LEFT, padx=5)
 output_label = tk.Label(root, text="", wraplength=500)
 output_label.pack(pady=10)
 
-status_label = tk.Label(root, text="", wraplength=500)
+status_label = tk.Label(root, text="", wraplength=500, fg="green")
+
 status_label.pack(pady=10)
 
 # Create a frame for the transcript
@@ -493,8 +495,9 @@ transcript_text = tk.Text(transcript_frame, wrap=tk.WORD, height=15, width=60)
 transcript_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
 
 # Add a scrollbar to the transcript
-scrollbar = tk.Scrollbar(transcript_frame)
+scrollbar = tk.Scrollbar(transcript_frame, orient="vertical")
 scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
 
 transcript_text.config(yscrollcommand=scrollbar.set)
 scrollbar.config(command=transcript_text.yview)
